@@ -11,7 +11,6 @@ from mmve.nn.modules.propagators.second_order_recurrent_with_memory import Secon
 from mmve.nn.modules.backbones.conv2d_blocks import ResidualBlocksWithInputConv as Backbone
 from mmve.nn.modules.upsamplers.conv2d_blocks import BasicVSRUpsampler as Upsampler
 
-
 @MODELS.register_module()
 class PSRTTbpttImpl(BaseModule):
 
