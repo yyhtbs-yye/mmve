@@ -1,0 +1,10 @@
+work_dirs/
+cache/
+.vscode/
+data/
+log.dec
+*.pt
+*.pyc
+*.csv
+*.png
+*__pycache__/*
