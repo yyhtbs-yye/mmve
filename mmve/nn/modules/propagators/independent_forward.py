@@ -26,7 +26,7 @@ class TemporalIndependentPropagator(BaseModule):
 
         for i in range(0, curr_feats.size(1)):
             
-            x = curr_feats[:, i:i+1, ...]
+            x = curr_feats[:, i, ...]
 
             o = self.fextor(x) + x
             
