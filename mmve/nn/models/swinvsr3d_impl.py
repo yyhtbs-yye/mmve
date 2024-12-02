@@ -8,7 +8,7 @@ from mmve.registry import MODELS
 
 from mmve.nn.modules.optical_flow.spynet import  SPyNet
 from mmve.nn.modules.propagators.second_order_recurrent_dense_net import SecondOrderRecurrentPropagatorDenseNet as Propagator
-from mmve.nn.modules.backbones.smsrt_block import SwinIRFM 
+from mmve.nn.modules.backbones.swinve_block import SwinIRFM 
 from mmve.nn.modules.preproc.conv2d_blocks import ResidualBlocksWithInputConv as preproc
 from mmve.nn.modules.upsamplers.conv2d_blocks import BasicVSRUpsampler
 
