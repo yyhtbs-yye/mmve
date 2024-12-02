@@ -15,7 +15,7 @@ from mmve.nn.modules.upsamplers.conv2d_blocks import BasicVSRUpsampler
 @MODELS.register_module()
 class SwinVsr3DImpl(BaseModule):
 
-    def __init__(self, mid_channels=32, volume_size=[3, 64, 64], depths=(6, 6, 6), num_heads=(4, 4, 4),
+    def __init__(self, mid_channels=32, volume_size=[3, 64, 64], depths=(4, 4, 4), num_heads=(4, 4, 4),
                  spynet_pretrained=None):
 
         super().__init__()
