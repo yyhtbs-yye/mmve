@@ -24,16 +24,11 @@ class SwinTransformerBlock(nn.Module):
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
 
-        self.norm1 = nn.LayerNorm(dim)
-
         self.attn = WinMHSelfAttention3d(
             dim=dim, num_heads=num_heads,
             window_size=self.window_size,
             qkv_bias=qkv_bias,
             )
-
-
-        self.norm2 = nn.LayerNorm(dim)
 
         mlp_hidden_dim = int(dim * mlp_ratio)
         
@@ -42,17 +37,13 @@ class SwinTransformerBlock(nn.Module):
     def forward(self, x, attn_mask):
         B, T, H, W, C = x.shape
         
-        z = self.norm1(x)
-
         # cyclic shift
         if any(i > 0 for i in self.shift_size):
             shifted_z = torch.roll(
-                z, shifts=(-self.shift_size[0], -self.shift_size[1], -self.shift_size[2]), dims=(1, 2, 3))
+                x, shifts=(-self.shift_size[0], -self.shift_size[1], -self.shift_size[2]), dims=(1, 2, 3))
         else:
-            shifted_z = z
+            shifted_z = x
 
-        if not self.training:
-            a = 1
         # partition windows
         h_windows = windowing.window_partition_3d(shifted_z,
                                      self.window_size)  # nw*b, window_size[0]*window_size[1]*window_size[2], c
@@ -75,7 +66,7 @@ class SwinTransformerBlock(nn.Module):
             z = shifted_z
 
         # FFN
-        x = x + self.mlp(self.norm2(z + x))
+        x = x + self.mlp(z + x)
 
         return x
 
@@ -154,8 +145,6 @@ class SwinIRFM(BaseModule):
                 qkv_bias=qkv_bias)
             self.layers.append(layer)
 
-        self.norm = nn.LayerNorm(self.num_features)
-
         self.lrelu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
 
         self.apply(self._init_weights)
@@ -197,8 +186,6 @@ class SwinIRFM(BaseModule):
         for layer in self.layers:
             feats = layer(feats, attn_mask)
         
-        feats = self.norm(feats)
-
         feats = feats.permute(0, 1, 4, 2, 3)
 
         if pad_d1 > 0 or pad_r > 0 or pad_b > 0:
