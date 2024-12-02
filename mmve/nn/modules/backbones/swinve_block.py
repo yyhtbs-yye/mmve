@@ -51,6 +51,8 @@ class SwinTransformerBlock(nn.Module):
         else:
             shifted_z = z
 
+        if not self.training:
+            a = 1
         # partition windows
         h_windows = windowing.window_partition_3d(shifted_z,
                                      self.window_size)  # nw*b, window_size[0]*window_size[1]*window_size[2], c
