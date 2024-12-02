@@ -169,13 +169,13 @@ class SwinIRFM(BaseModule):
         # print(f"t={t}, h={h}, w={w}")
 
         # pad feature maps to multiples of window size
-        pad_l = pad_t = pad_d0 = 0
-        pad_d1 = (self.window_size[0] - t % self.window_size[0]) % self.window_size[0]
-        pad_b = (self.window_size[1] - h % self.window_size[1]) % self.window_size[1]
-        pad_r = (self.window_size[2] - w % self.window_size[2]) % self.window_size[2]
+        pad_w0 = pad_h0 = pad_t0 = 0
+        pad_t1 = (self.window_size[0] - t % self.window_size[0]) % self.window_size[0]
+        pad_h1 = (self.window_size[1] - h % self.window_size[1]) % self.window_size[1]
+        pad_w1 = (self.window_size[2] - w % self.window_size[2]) % self.window_size[2]
 
         # This is [B, T, C, H, W] padding would be [W, H, C, T, B]
-        feats = F.pad(feats, (pad_l, pad_r, pad_t, pad_b, 0, 0, pad_d0, pad_d1))
+        feats = F.pad(feats, (pad_w0, pad_w1, pad_h0, pad_h1, 0, 0, pad_t0, pad_t1))
 
         b, t, c, h, w = feats.size()                        # c = embed_dim
                 
@@ -188,8 +188,8 @@ class SwinIRFM(BaseModule):
         
         feats = feats.permute(0, 1, 4, 2, 3)
 
-        if pad_d1 > 0 or pad_r > 0 or pad_b > 0:
-            feats = feats[:, :t-pad_d1, :, :h-pad_b, :w-pad_r].contiguous()
+        if pad_t1 > 0 or pad_w1 > 0 or pad_h1 > 0:
+            feats = feats[:, :t-pad_t1, :, :h-pad_h1, :w-pad_w1].contiguous()
 
         return feats[:, -1, :, :, :] + x_center
     
