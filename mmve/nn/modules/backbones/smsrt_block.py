@@ -32,7 +32,6 @@ class SwinTransformerBlock(nn.Module):
             qkv_bias=qkv_bias,
             )
 
-
         self.norm2 = nn.LayerNorm(dim)
 
         mlp_hidden_dim = int(dim * mlp_ratio)
@@ -46,8 +45,9 @@ class SwinTransformerBlock(nn.Module):
 
         # cyclic shift
         if any(i > 0 for i in self.shift_size):
-            shifted_z = torch.roll(
-                z, shifts=(-self.shift_size[0], -self.shift_size[1], -self.shift_size[2]), dims=(1, 2, 3))
+            shifted_z = torch.roll(z, 
+                                   shifts=(-self.shift_size[0], -self.shift_size[1], -self.shift_size[2]), 
+                                   dims=(1, 2, 3))
         else:
             shifted_z = z
 
@@ -67,8 +67,9 @@ class SwinTransformerBlock(nn.Module):
 
         # reverse cyclic shift
         if any(i > 0 for i in self.shift_size):
-            z = torch.roll(
-                shifted_z, shifts=(self.shift_size[0], self.shift_size[1], self.shift_size[2]), dims=(1, 2, 3))
+            z = torch.roll(shifted_z, 
+                           shifts=(self.shift_size[0], self.shift_size[1], self.shift_size[2]), 
+                           dims=(1, 2, 3))
         else:
             z = shifted_z
 
