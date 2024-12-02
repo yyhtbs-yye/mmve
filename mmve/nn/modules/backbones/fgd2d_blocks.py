@@ -1,3 +1,9 @@
+from mmengine.model import BaseModule
+import torch.nn as nn
+import torch
+from mmve.nn.archs import ResidualBlockNoBN
+from mmve.nn.utils import make_layer
+
 import torch
 import torch.nn as nn
 
@@ -53,3 +59,39 @@ class AnyOrderDeformableAlignment(ModulatedDeformConv2d):
         return modulated_deform_conv2d(x, offset, mask, self.weight, self.bias,
                                        self.stride, self.padding, self.dilation, 
                                        self.groups, self.deform_groups)
+
+
+class FlowGuidedDeformableConv2d(BaseModule):
+
+    def __init__(self, in_channels, out_channels=64, num_blocks=30, is_3d=False, kernel_size=3,
+                 max_residue_magnitude=10,):
+        super().__init__()
+
+        self.refiner = AnyOrderDeformableAlignment(
+                in_channels=2 * out_channels,
+                out_channels=out_channels,
+                kernel_size=3, padding=1,
+                deform_groups=16,
+                max_residue_magnitude=max_residue_magnitude)
+
+        self.main = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size, 1, kernel_size//2, bias=True),
+            nn.LeakyReLU(negative_slope=0.1, inplace=True),
+            make_layer(ResidualBlockNoBN, num_blocks, mid_channels=out_channels)
+        )
+    
+    def forward(self, now, aligned, raw, flows, dense=None):
+
+        feat = torch.cat(aligned + [now], dim=1) # -2, -1, now
+
+        feat = self.refiner(torch.cat(raw, dim=1), 
+                            torch.cat(aligned + [now], dim=1), 
+                            flows)
+
+        if dense is None:
+            return self.main(feat)
+
+        dense = torch.cat(dense, dim=1)
+
+        return self.main(torch.concat([feat, dense], 1))
+

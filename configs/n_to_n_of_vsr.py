@@ -6,8 +6,8 @@ model_name = 'BasicVSRNet'
 model_configs = dict()
 
 loss_name = 'CharbonnierLoss'
-train_iter = 300_000
-val_interval = 100
+train_iter = 600_000
+val_interval = 1_000
 train_on_patch = True
 gt_patch_size = 256
 work_dir = f'./data/work_dirs/{model_name}'
@@ -41,9 +41,6 @@ train_pipeline = [
     dict(type='LoadImageFromFile', key='img', channel_order='rgb'),
     dict(type='LoadImageFromFile', key='gt', channel_order='rgb'),
     dict(type='SetValues', dictionary=dict(scale=scale)),
-    *( [dict(type='PairedRandomCrop', gt_patch_size=gt_patch_size)] if train_on_patch else [] ),
-    dict(type='Flip', keys=['img', 'gt'], flip_ratio=0.5, direction='horizontal'),
-    dict(type='Flip', keys=['img', 'gt'], flip_ratio=0.5, direction='vertical'),
     dict(type='PackInputs')
 ]
 
@@ -67,7 +64,7 @@ train_dataloader = dict(
         metainfo=dict(dataset_type='reds_reds4', task_name='vsr'),
         data_root=reds_root,
         data_prefix=dict(img='train_sharp_bicubic/X4', gt='train_sharp'),
-        ann_file='meta_info_reds4_train.txt',
+        ann_file='meta_info_reds4_val.txt',
         depth=1,
         num_input_frames=num_input_frames,
         pipeline=train_pipeline))

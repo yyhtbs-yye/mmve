@@ -2,11 +2,12 @@
 import os
 
 cuda_id = 2
-cfg_path = "/workspace/mmve/configs/n_to_n_vsr.py"
+cfg_path = "configs/n_to_n_vsr.py"
 
-model_configs = dict(type='BasicVSRPlusImpl', mid_channels=64, num_blocks=7,
-                     spynet_pretrained='https://download.openmmlab.com/mmediting/restorers/'
-                     'basicvsr/spynet_20210409-c6c1bd09.pth')
+model_configs = dict(type='SwinVsr3DImpl', mid_channels=32, 
+                     spynet_pretrained='https://download.openmmlab.com/'
+                     'mmediting/restorers/basicvsr/'
+                     'spynet_20210409-c6c1bd09.pth')
 
 os.environ['CUDA_VISIBLE_DEVICES'] = str(cuda_id)
 
@@ -20,7 +21,7 @@ cfg.model['generator'].update(**model_configs)
 # Below will not work, as they are not modified in settings but as global variables. 
 cfg.train_dataloader['dataset']['num_input_frames'] = 7
 cfg.val_dataloader['dataset']['num_input_frames'] = 7
-cfg.work_dir = './work_dirs/BobVSModImpl'
+cfg.work_dir = './data/work_dirs/SwinVsr3DModImpl'
 runner = Runner.from_cfg(cfg)
 
 runner.train()

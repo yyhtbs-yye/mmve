@@ -6,5 +6,5 @@ class Warper(BaseModule):
     def __init__(self):
         super().__init__()
 
-    def forward(self, feat, flow):
-        return flow_warp(feat, flow)
+    def forward(self, feat_supp, flow, feat_curr=None):
+        return flow_warp(feat_supp, flow)

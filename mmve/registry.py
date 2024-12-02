@@ -128,51 +128,22 @@ TRANSFORMS = Registry(
 #                          mmve.base_models                           #
 #######################################################################
 
-BASE_MODELS = Registry(
-    'model',
-    parent=MMENGINE_MODELS,
-    locations=['mmve.base_models'],
-)
-# Model wrappers like 'MMDistributedDataParallel'
-BASE_MODEL_WRAPPERS = Registry(
-    'model_wrapper',
-    parent=MMENGINE_MODEL_WRAPPERS,
-    locations=['mmve.base_models'],
-)
-
-#######################################################################
-#                            mmve.editors                             #
-#######################################################################
-
-BASE_EDITORS = Registry(
-    'model',
-    parent=MMENGINE_MODELS,
-    locations=['mmve.editors'],
-)
-# Model wrappers like 'MMDistributedDataParallel'
-BASE_EDITORS_WRAPPERS = Registry(
-    'model_wrapper',
-    parent=MMENGINE_MODEL_WRAPPERS,
-    locations=['mmve.editors'],
-)
-
-
-#######################################################################
-#                            mmve.nn                                  #
-#######################################################################
-
-# Neural network modules inheriting `nn.Module`.
 MODELS = Registry(
     'model',
     parent=MMENGINE_MODELS,
-    locations=['mmve.nn'],
+    locations=['mmve.base_models', 'mmve.editors', 'mmve.nn'],
 )
 # Model wrappers like 'MMDistributedDataParallel'
 MODEL_WRAPPERS = Registry(
     'model_wrapper',
     parent=MMENGINE_MODEL_WRAPPERS,
-    locations=['mmve.nn'],
+    locations=['mmve.base_models', 'mmve.editors', 'mmve.nn'],
 )
+
+#######################################################################
+#                            mmve.nn                                  #
+#######################################################################
+
 # Weight initialization methods like uniform, xavier.
 WEIGHT_INITIALIZERS = Registry(
     'weight initializer',

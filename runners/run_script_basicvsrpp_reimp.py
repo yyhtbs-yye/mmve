@@ -1,12 +1,13 @@
 
 import os
 
-cuda_id = 1
+cuda_id = 3
 cfg_path = "configs/n_to_n_vsr.py"
 
 model_configs = dict(type='BasicVSRPlusPlusImpl', mid_channels=64, num_blocks=7,
-                     spynet_pretrained='https://download.openmmlab.com/mmediting/restorers/'
-                     'basicvsr/spynet_20210409-c6c1bd09.pth')
+                     spynet_pretrained='https://download.openmmlab.com/'
+                     'mmediting/restorers/basicvsr/'
+                     'spynet_20210409-c6c1bd09.pth')
 
 os.environ['CUDA_VISIBLE_DEVICES'] = str(cuda_id)
 
@@ -20,7 +21,7 @@ cfg.model['generator'].update(**model_configs)
 # Below will not work, as they are not modified in settings but as global variables. 
 cfg.train_dataloader['dataset']['num_input_frames'] = 7
 cfg.val_dataloader['dataset']['num_input_frames'] = 7
-cfg.work_dir = './work_dirs/BasicVSModImpl'
+cfg.work_dir = './data/work_dirs/BasicVSModImpl'
 runner = Runner.from_cfg(cfg)
 
 runner.train()
