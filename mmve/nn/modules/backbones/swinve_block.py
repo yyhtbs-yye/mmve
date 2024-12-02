@@ -24,49 +24,59 @@ class SwinTransformerBlock(nn.Module):
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
 
-        self.attn = WinMHSelfAttention3d(
+        # Self-attention for unshifted windows
+        self.attn_unshifted = WinMHSelfAttention3d(
             dim=dim, num_heads=num_heads,
             window_size=self.window_size,
             qkv_bias=qkv_bias,
-            )
+        )
+
+        # Self-attention for shifted windows
+        self.attn_shifted = WinMHSelfAttention3d(
+            dim=dim, num_heads=num_heads,
+            window_size=self.window_size,
+            qkv_bias=qkv_bias,
+        )
 
         mlp_hidden_dim = int(dim * mlp_ratio)
-        
-        self.mlp = mlp.TwoLayerMLP(in_features=dim, mid_features=mlp_hidden_dim, act_layer=nn.GELU)
 
-    def forward(self, x, attn_mask):
+        self.mlp_0 = mlp.TwoLayerMLP(in_features=dim, mid_features=mlp_hidden_dim, act_layer=nn.GELU)
+        self.mlp_1 = mlp.TwoLayerMLP(in_features=dim, mid_features=mlp_hidden_dim, act_layer=nn.GELU)
+        self.attn_mask = dict()
+
+    def forward(self, x):
         B, T, H, W, C = x.shape
-        
-        # cyclic shift
-        if any(i > 0 for i in self.shift_size):
-            shifted_z = torch.roll(
-                x, shifts=(-self.shift_size[0], -self.shift_size[1], -self.shift_size[2]), dims=(1, 2, 3))
-        else:
-            shifted_z = x
 
-        # partition windows
-        h_windows = windowing.window_partition_3d(shifted_z,
-                                     self.window_size)  # nw*b, window_size[0]*window_size[1]*window_size[2], c
+        skey = H*W                  # This is commonly unique but not always
 
-        # W-MSA/SW-MSA (to be compatible for testing on images whose shapes are the multiple of window size
-        if any(i > 0 for i in self.shift_size):
-            attn_windows = self.attn(h_windows, mask=attn_mask)  # B*nW, Wd*Wh*Ww, C
-        else:
-            attn_windows = self.attn(h_windows, mask=None)
+        if skey not in self.attn_mask:
+            self.attn_mask[skey] = mask.compute_mask_3d((T, H, W), tuple(self.window_size), self.shift_size).to(x.device)
 
-        # merge windows
-        attn_windows = attn_windows.view(-1, *self.window_size, C)
-        shifted_z = windowing.window_reverse_3d(attn_windows, self.window_size, B, T, H, W)
+        # --------- Unshifted window MSA
+        # Partition windows
+        z = windowing.window_partition_3d(x, self.window_size)
+        z = self.attn_unshifted(z, mask=None)
+        z = windowing.window_reverse_3d(z.view(-1, *self.window_size, C), self.window_size, B, T, H, W)
+        z = x + self.mlp_0(z + x)
 
-        # reverse cyclic shift
-        if any(i > 0 for i in self.shift_size):
-            z = torch.roll(
-                shifted_z, shifts=(self.shift_size[0], self.shift_size[1], self.shift_size[2]), dims=(1, 2, 3))
-        else:
-            z = shifted_z
+        # --------- Shifted window MSA
+        # Apply cyclic shift
+        shifted_z = torch.roll(
+            z, shifts=(-self.shift_size[0], -self.shift_size[1], -self.shift_size[2]), dims=(1, 2, 3))
+
+        # Partition windows
+        shifted_z = windowing.window_partition_3d(shifted_z, self.window_size)
+        shifted_z = self.attn_shifted(shifted_z, mask=self.attn_mask[skey])
+        # Merge windows
+        shifted_z = shifted_z.view(-1, *self.window_size, C)
+        z_shifted = windowing.window_reverse_3d(shifted_z, self.window_size, B, T, H, W)
+
+        # Reverse cyclic shift
+        z = torch.roll(
+            z_shifted, shifts=(self.shift_size[0], self.shift_size[1], self.shift_size[2]), dims=(1, 2, 3))
 
         # FFN
-        x = x + self.mlp(z + x)
+        x = x + self.mlp_1(z + x)
 
         return x
 
@@ -83,6 +93,7 @@ class RSTB(nn.Module):
         
         self.dim = dim  
         self.depth = depth
+        shift_size = (window_size[0], window_size[1] // 2, window_size[2] // 2)
         
         # Define the blocks (similar to BasicLayer)
         self.blocks = nn.ModuleList([
@@ -90,24 +101,22 @@ class RSTB(nn.Module):
                 dim=dim,
                 num_heads=num_heads,
                 window_size=window_size,
-                shift_size=(0, 0, 0) if (i % 2 == 0) else (window_size[0], window_size[1] // 2, window_size[2] // 2),
+                shift_size=shift_size,
                 mlp_ratio=mlp_ratio,
                 qkv_bias=qkv_bias) for i in range(depth)
         ])
 
-    def forward(self, x, attn_mask):
+    def forward(self, x):
 
         h = x.contiguous()
 
         # Apply each block in the residual group
         for blk in self.blocks:
-            h = blk(h, attn_mask)
+            h = blk(h)
 
         # Add residual connection
         return h + x  # Residual connection
 
-
-    
 class SwinIRFM(BaseModule):
 
     def __init__(self,
@@ -122,7 +131,6 @@ class SwinIRFM(BaseModule):
         super(SwinIRFM, self).__init__()
         
         self.window_size = window_size
-        self.shift_size = (window_size[0], window_size[1] // 2, window_size[2] // 2)
         self.num_frames = volume_size[0]
         self.height = volume_size[1]
         self.width = volume_size[2]
@@ -178,13 +186,11 @@ class SwinIRFM(BaseModule):
         feats = F.pad(feats, (pad_w0, pad_w1, pad_h0, pad_h1, 0, 0, pad_t0, pad_t1))
 
         b, t, c, h, w = feats.size()                        # c = embed_dim
-                
-        attn_mask = mask.compute_mask_3d((t, h, w), tuple(self.window_size), self.shift_size).to(feats.device)
-
+        
         feats = feats.permute(0, 1, 3, 4, 2)
 
         for layer in self.layers:
-            feats = layer(feats, attn_mask)
+            feats = layer(feats)
         
         feats = feats.permute(0, 1, 4, 2, 3)
 

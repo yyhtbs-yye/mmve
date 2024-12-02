@@ -7,16 +7,6 @@ from timm.models.layers import trunc_normal_
 from mmve.nn.modules.utils import positional_encoding as pe
 
 class WinMHSelfAttention3d(nn.Module):
-    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
-    It supports both of shifted and non-shifted window.
-
-    Args:
-        dim (int): Number of input channels.
-        window_size (tuple[int]): The height and width of the window.
-        num_heads (int): Number of attention heads.
-        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
-        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
-    """
 
     def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None):
 
@@ -55,11 +45,7 @@ class WinMHSelfAttention3d(nn.Module):
         self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x, mask=None):
-        """
-        Args:
-            x: input features with shape of (num_windows*b, n, c)
-            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
-        """
+        
         B_, N, C = x.shape
         qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous()
         q, k, v = qkv[0], qkv[1], qkv[2]  # B_, nH, N, C
