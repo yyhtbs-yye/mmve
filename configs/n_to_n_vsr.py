@@ -55,7 +55,7 @@ val_pipeline = [
     dict(type='PackInputs')
 ]
 
-reds_root = '/workspace/mmve/data/REDS'
+reds_root = './data/REDS'
 
 train_dataloader = dict(
     num_workers=num_workers,

@@ -39,11 +39,17 @@ tensorboard
 transformers>=4.27.4
 albumentations
 clip
+controlnet_aux
 coverage<7.0.0
 imageio-ffmpeg==0.4.4
 interrogate
 mmdet>=3.0.0
 pytest
+transformers>=4.27.4
+albumentations
+clip
+imageio-ffmpeg==0.4.4
+mmdet>=3.0.0
 open_clip_torch
 PyQt5
 

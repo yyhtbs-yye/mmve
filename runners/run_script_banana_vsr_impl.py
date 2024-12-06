@@ -1,11 +1,9 @@
-
 import os
 
-cuda_id = 2
+cuda_id = 1
 cfg_path = "configs/n_to_n_vsr.py"
 
-model_configs = dict(type='SwinVsr3DImpl', mid_channels=32, depths=(3, 3, 3),
-                     num_heads=(4, 4, 4),
+model_configs = dict(type='BananaVSRImpl', mid_channels=32, num_blocks=7,
                      spynet_pretrained='https://download.openmmlab.com/'
                      'mmediting/restorers/basicvsr/'
                      'spynet_20210409-c6c1bd09.pth')
@@ -18,11 +16,13 @@ from mmengine.config import Config
 
 cfg = Config.fromfile(cfg_path)
 
+cfg.train_cfg['val_interval'] = 10000
+
 cfg.model['generator'].update(**model_configs)
 # Below will not work, as they are not modified in settings but as global variables. 
 cfg.train_dataloader['dataset']['num_input_frames'] = 7
 cfg.val_dataloader['dataset']['num_input_frames'] = 7
-cfg.work_dir = './data/work_dirs/SwinVsr3DModImpl'
+cfg.work_dir = './data/work_dirs/BananaVSRImpl'
 runner = Runner.from_cfg(cfg)
 
 runner.train()
