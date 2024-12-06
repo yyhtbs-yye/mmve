@@ -15,13 +15,13 @@ class ResidualBlocksWithInputConv(BaseModule):
             make_layer(ResidualBlockNoBN, num_blocks, mid_channels=out_channels)
         )
     
-    def forward(self, now, aligned, raw, flows, dense=None):
+    def forward(self, feat, packs):
 
-        feat = torch.cat(aligned + [now], dim=1) # -2, -1, now
+        aligned = torch.cat(packs['aligned'] + [feat], dim=1) # -2, -1, now
             
-        if dense is None:
-            return self.main(feat)
+        if 'dense' not in packs or packs['dense'] is None:
+            return self.main(aligned) + feat
         
-        dense = torch.cat(dense, dim=1)
+        dense = torch.cat(packs['dense'], dim=1)
 
-        return self.main(torch.concat([feat, dense], 1))
+        return self.main(torch.concat([aligned, dense], 1)) + feat

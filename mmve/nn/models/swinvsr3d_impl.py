@@ -8,24 +8,24 @@ from mmve.registry import MODELS
 
 from mmve.nn.modules.optical_flow.spynet import  SPyNet
 from mmve.nn.modules.propagators.second_order_recurrent_dense_net import SecondOrderRecurrentPropagatorDenseNet as Propagator
-from mmve.nn.modules.backbones.swinve_block import SwinIRFM 
+from mmve.nn.modules.backbones.swinve_block import SwinIRFX
 from mmve.nn.modules.preproc.conv2d_blocks import ResidualBlocksWithInputConv as preproc
 from mmve.nn.modules.upsamplers.conv2d_blocks import BasicVSRUpsampler
 
 @MODELS.register_module()
 class SwinVsr3DImpl(BaseModule):
 
-    def __init__(self, mid_channels=32, volume_size=[3, 64, 64], depths=(4, 4, 4), num_heads=(4, 4, 4),
+    def __init__(self, mid_channels=32, depths=(2, 2, 2), num_heads=(4, 4, 4),
                  spynet_pretrained=None):
 
         super().__init__()
 
         self.mid_channels = mid_channels
         
-        fextor_b1 = SwinIRFM(volume_size=volume_size, embed_dim=mid_channels, depths=depths, num_heads=num_heads)
-        fextor_f1 = SwinIRFM(volume_size=volume_size, embed_dim=mid_channels, depths=depths, num_heads=num_heads)
-        fextor_b2 = SwinIRFM(volume_size=volume_size, embed_dim=mid_channels, depths=depths, num_heads=num_heads)
-        fextor_f2 = SwinIRFM(volume_size=volume_size, embed_dim=mid_channels, depths=depths, num_heads=num_heads)
+        fextor_b1 = SwinIRFX(embed_dim=mid_channels, depths=depths, num_heads=num_heads)
+        fextor_f1 = SwinIRFX(embed_dim=mid_channels, depths=depths, num_heads=num_heads)
+        fextor_b2 = SwinIRFX(embed_dim=mid_channels, depths=depths, num_heads=num_heads)
+        fextor_f2 = SwinIRFX(embed_dim=mid_channels, depths=depths, num_heads=num_heads)
 
         self.spatial_fextor = preproc(3, mid_channels, 5)
 

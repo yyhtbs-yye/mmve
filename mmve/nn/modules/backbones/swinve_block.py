@@ -24,6 +24,10 @@ class SwinTransformerBlock(nn.Module):
         self.shift_size = shift_size
         self.mlp_ratio = mlp_ratio
 
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+        self.norm3 = nn.LayerNorm(dim)
+
         # Self-attention for unshifted windows
         self.attn_unshifted = WinMHSelfAttention3d(
             dim=dim, num_heads=num_heads,
@@ -52,9 +56,11 @@ class SwinTransformerBlock(nn.Module):
         if skey not in self.attn_mask:
             self.attn_mask[skey] = mask.compute_mask_3d((T, H, W), tuple(self.window_size), self.shift_size).to(x.device)
 
+        z = self.norm1(x)
+
         # --------- Unshifted window MSA
         # Partition windows
-        z = windowing.window_partition_3d(x, self.window_size)
+        z = windowing.window_partition_3d(z, self.window_size)
         z = self.attn_unshifted(z, mask=None)
         z = windowing.window_reverse_3d(z.view(-1, *self.window_size, C), self.window_size, B, T, H, W)
         z = x + self.mlp_0(z + x)
@@ -63,6 +69,9 @@ class SwinTransformerBlock(nn.Module):
         # Apply cyclic shift
         shifted_z = torch.roll(
             z, shifts=(-self.shift_size[0], -self.shift_size[1], -self.shift_size[2]), dims=(1, 2, 3))
+
+        shifted_z = self.norm2(shifted_z)
+
 
         # Partition windows
         shifted_z = windowing.window_partition_3d(shifted_z, self.window_size)
@@ -74,6 +83,8 @@ class SwinTransformerBlock(nn.Module):
         # Reverse cyclic shift
         z = torch.roll(
             z_shifted, shifts=(self.shift_size[0], self.shift_size[1], self.shift_size[2]), dims=(1, 2, 3))
+
+        z = self.norm3(z)
 
         # FFN
         x = x + self.mlp_1(z + x)
@@ -120,7 +131,49 @@ class RSTB(nn.Module):
 class SwinIRFM(BaseModule):
 
     def __init__(self,
-                 volume_size=[3, 64, 64],   # Input frames' size. Default T=3 Frames, H=64 Height, W=64 Width
+                 img_size=64,
+                 patch_size=1,
+                 in_chans=3,
+                 embed_dim=96,
+                 depths=(6, 6, 6, 6),
+                 num_heads=(6, 6, 6, 6),
+                 window_size=[3, 8, 8],
+                 mlp_ratio=4.,
+                 qkv_bias=True,
+                 qk_scale=None,
+                 drop_rate=0.,
+                 attn_drop_rate=0.,
+                 drop_path_rate=0.1,
+                 norm_layer=nn.LayerNorm,
+                 ape=False,
+                 patch_norm=True,
+                 use_checkpoint=False,
+                 upscale=4,
+                 img_range=1.,
+                 upsampler='pixelshuffle',
+                 resi_connection='1conv',
+                 num_frames=3,
+                 **kwargs):
+        super(SwinIRFM, self).__init__()
+
+        # if isinstance(img_size, list) or isinstance(img_size, tuple):
+        #     pass
+        # else:
+        #     img_size = (img_size, img_size)
+
+        self.model = SwinIRFX(embed_dim=embed_dim, 
+                 depths=depths, num_heads=num_heads, 
+                 window_size=window_size, mlp_ratio=mlp_ratio, 
+                 qkv_bias=qkv_bias)
+    
+    def forward(self, x):
+        now = x[:, 1, ...]
+        aligned = [x[:, i, ...] for i in range(x.size(1)) if i != 1]
+        return self.model(now, aligned) # now, aligned
+
+class SwinIRFX(BaseModule):
+
+    def __init__(self,
                  embed_dim=96,              # Patch embedding dimension. Default: 96
                  depths=(6, 6, 6, 6),       # Depth of each Swin Transformer layer.
                  num_heads=(6, 6, 6, 6),    # Number of attention heads in different layers.
@@ -128,12 +181,10 @@ class SwinIRFM(BaseModule):
                  mlp_ratio=4.,              # Ratio of mlp hidden dim to embedding dim. Default: 4
                  qkv_bias=True,             # If True, add a learnable bias to query, key, value. Default: True
                  ):
-        super(SwinIRFM, self).__init__()
+        
+        super(SwinIRFX, self).__init__()
         
         self.window_size = window_size
-        self.num_frames = volume_size[0]
-        self.height = volume_size[1]
-        self.width = volume_size[2]
 
         self.num_layers = len(depths)  
         self.embed_dim = embed_dim  
@@ -154,6 +205,8 @@ class SwinIRFM(BaseModule):
             self.layers.append(layer)
 
         self.lrelu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
+
+        self.norm = nn.LayerNorm(self.num_features)
 
         self.apply(self._init_weights)
 
@@ -191,7 +244,9 @@ class SwinIRFM(BaseModule):
 
         for layer in self.layers:
             feats = layer(feats)
-        
+
+        feats = self.norm(feats)  # b seq_len c
+
         feats = feats.permute(0, 1, 4, 2, 3)
 
         if pad_t1 > 0 or pad_w1 > 0 or pad_h1 > 0:

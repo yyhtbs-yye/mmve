@@ -7,9 +7,10 @@ from mmengine.model import BaseModule
 from mmve.registry import MODELS
 
 from mmve.nn.modules.optical_flow.spynet import  SPyNet
-from mmve.nn.modules.propagators.second_order_recurrent_dense_net import SecondOrderRecurrentPropagatorDenseNet as Propagator
-from mmve.nn.modules.backbones.conv2d_blocks import ResidualBlocksWithInputConv 
-from mmve.nn.modules.preproc.conv2d_blocks import ResidualBlocksWithInputConv as preproc
+from mmve.nn.modules.propagators.rtp import RecurrentTemporalPropagator as Propagator
+from mmve.nn.modules.aligners.optical_flow_align import SecondOrderAligner as Aligner
+from mmve.nn.modules.backbones.conv2d_blocks import ResidualBlocksWithInputConv as Fextor
+from mmve.nn.modules.preproc.conv2d_blocks import ResidualBlocksWithInputConv as Preproc
 from mmve.nn.modules.upsamplers.conv2d_blocks import BasicVSRUpsampler
 
 @MODELS.register_module()
@@ -22,21 +23,22 @@ class VanillaVSRImpl(BaseModule):
         self.mid_channels = mid_channels
         self.num_blocks = num_blocks
         
-        fextor_def = ResidualBlocksWithInputConv
-        fextor_args_b1 = dict(in_channels=mid_channels, out_channels=mid_channels, num_blocks=num_blocks)
-        fextor_args_f1 = dict(in_channels=mid_channels, out_channels=mid_channels, num_blocks=num_blocks)
-        fextor_args_b2 = dict(in_channels=mid_channels, out_channels=mid_channels, num_blocks=num_blocks)
-        fextor_args_f2 = dict(in_channels=mid_channels, out_channels=mid_channels, num_blocks=num_blocks)
+        fextor_b1, fextor_f1, fextor_b2, fextor_f2 = [
+            Fextor(in_channels=3*mid_channels, out_channels=mid_channels, num_blocks=num_blocks) 
+            for _ in range(4)
+        ]
 
-        self.spatial_fextor = preproc(3, mid_channels, 5)
+        aligner_b1, aligner_f1, aligner_b2, aligner_f2 = [Aligner() for _ in range(4)]
+
+        self.spatial_fextor = Preproc(3, mid_channels, 5)
 
         # Recurrent propagators
-        self.backward_propagator1 = Propagator(mid_channels, fextor_def=fextor_def, fextor_args=fextor_args_b1, is_reversed=True)
-        self.forward_propagator1  = Propagator(mid_channels, fextor_def=fextor_def, fextor_args=fextor_args_f1,)
-        self.backward_propagator2 = Propagator(mid_channels, fextor_def=fextor_def, fextor_args=fextor_args_b2, is_reversed=True)
-        self.forward_propagator2  = Propagator(mid_channels, fextor_def=fextor_def, fextor_args=fextor_args_f2,)
+        self.backward_propagator1 = Propagator(mid_channels, aligner=aligner_b1, fextor=fextor_b1, is_reversed=True)
+        self.forward_propagator1  = Propagator(mid_channels, aligner=aligner_f1, fextor=fextor_f1,)
+        self.backward_propagator2 = Propagator(mid_channels, aligner=aligner_b2, fextor=fextor_b2, is_reversed=True)
+        self.forward_propagator2  = Propagator(mid_channels, aligner=aligner_f2, fextor=fextor_f2,)
         
-        self.upsampler = BasicVSRUpsampler(5 * mid_channels, mid_channels, 3)
+        self.upsampler = BasicVSRUpsampler(mid_channels, mid_channels, 3)
 
         # optical flow network for feature alignment
         self.spynet = SPyNet(pretrained=spynet_pretrained)
@@ -61,20 +63,20 @@ class VanillaVSRImpl(BaseModule):
         # compute optical flow
         forward_flows, backward_flows = self.compute_flow(lrs)
 
-        feats1 = self.backward_propagator1(feats_, backward_flows, None)
+        feats1 = self.backward_propagator1(feats_, extras={'flows': backward_flows})
 
-        feats2 = self.forward_propagator1(feats1, forward_flows, [feats_])
+        feats2 = self.forward_propagator1(feats1, extras={'flows': forward_flows})
 
-        feats3 = self.backward_propagator2(feats2, backward_flows, [feats_, feats1])
+        feats3 = self.backward_propagator2(feats2, extras={'flows': backward_flows})
+        
+        feats4 = self.forward_propagator2(feats3, extras={'flows': forward_flows})
 
-        feats4 = self.forward_propagator2(feats3, forward_flows, [feats_, feats1, feats2])
-
-        return self.upsampler(torch.cat([feats_, feats1, feats2, feats3, feats4], dim=2), lrs)
+        return self.upsampler(feats4, lrs)
 
 if __name__ == '__main__':
     tensor_filepath = "/workspace/mmve/test_input_tensor.pt"
-    input_tensor = torch.load('test_input_tensor.pt') / 100
-    model = BasicVSRPlusPlusImpl(mid_channels=4, num_blocks=1, spynet_pretrained='https://download.openmmlab.com/mmediting/restorers/'
+    input_tensor = torch.load('test_input_tensor2_7_3_64_64.pt') / 100
+    model = VanillaVSRImpl(mid_channels=4, num_blocks=1, spynet_pretrained='https://download.openmmlab.com/mmediting/restorers/'
                      'basicvsr/spynet_20210409-c6c1bd09.pth')
 
     output1 = model(input_tensor)

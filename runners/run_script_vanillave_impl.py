@@ -1,10 +1,10 @@
 
 import os
 
-cuda_id = 2
+cuda_id = 0
 cfg_path = "configs/n_to_n_vsr.py"
 
-model_configs = dict(type='SwinVsr3DImpl', mid_channels=32, 
+model_configs = dict(type='BasicVSRPlusPlusImpl', mid_channels=64, num_blocks=7,
                      spynet_pretrained='https://download.openmmlab.com/'
                      'mmediting/restorers/basicvsr/'
                      'spynet_20210409-c6c1bd09.pth')
@@ -21,7 +21,7 @@ cfg.model['generator'].update(**model_configs)
 # Below will not work, as they are not modified in settings but as global variables. 
 cfg.train_dataloader['dataset']['num_input_frames'] = 7
 cfg.val_dataloader['dataset']['num_input_frames'] = 7
-cfg.work_dir = './data/work_dirs/SwinVsr3DModImpl'
+cfg.work_dir = './data/work_dirs/VanillaveImpl'
 runner = Runner.from_cfg(cfg)
 
 runner.train()
