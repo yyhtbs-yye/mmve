@@ -92,8 +92,6 @@ class TbpttVSR(BaseEditModel):
             parsed_losses, log_vars = self.parse_losses(losses)  # type: ignore
             optim_wrapper.update_params(parsed_losses)
 
-            # print("a")
-
         self.generator.reset_hidden()
 
         return log_vars

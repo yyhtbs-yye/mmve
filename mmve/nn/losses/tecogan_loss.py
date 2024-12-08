@@ -45,10 +45,10 @@ class WarpingRegularization(nn.Module):
 
     def forward(self, **kwargs):
 
-        lq, forward_flows = kwargs['lq'], kwargs['forward_flows']
+        lq, lq_forward_flows = kwargs['lq'], kwargs['lq_forward_flows']
 
         lq_t = lq[:, 1:, ...]
-        lq_t1_warped = flow_warp(lq[:, :-1, ...], forward_flows.permute(0, 2, 3, 1))
+        lq_t1_warped = flow_warp(lq[:, :-1, ...], lq_forward_flows.permute(0, 2, 3, 1))
         reg = self.warping_reg_weight * self.warping_reg(lq_t, lq_t1_warped)
         return reg
 
