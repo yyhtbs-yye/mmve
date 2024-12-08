@@ -66,7 +66,7 @@ class PingpongRegularization(nn.Module):
         sr = kwargs['sr']
         n_frames = sr.size(1) // 2  #  13 -> n_frames=6
         sr_forward = sr[:, :n_frames, ...]              # 0,  1,  2,  3,  4,  5
-        sr_backward = sr[:, n_frames+1:, ...].flip(1)   # 7,  8,  9,  10, 11, 12
+        sr_backward = sr[:, n_frames+1:, ...].flip(1)   # 12, 11, 10, 9,  8,  7
         return self.pingpong_reg_weight * self.pingpong_reg(sr_forward, sr_backward)
 
     def loss_name(self) -> str:
