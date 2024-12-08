@@ -18,24 +18,18 @@ from mmve.nn.losses import tecogan_loss as tgl
 
 from mmve.base_models.base_gan import BaseGAN
 
-
 ModelType = Union[Dict, nn.Module]
 
 @MODELS.register_module()
 class TecoGAN(BaseGAN):
 
     def __init__(self,
-                 generator: dict,
-                 discriminator: dict,
+                 generator: dict, discriminator: dict,
                  data_preprocessor: dict,
-                 generator_steps: int = 1,
-                 discriminator_steps: int = 1,
+                 generator_steps: int = 1, discriminator_steps: int = 1,
+                 gen_losses: Optional[Dict] = None, disc_losses: Optional[Dict] = None,
+                 train_cfg: Optional[Dict] = None,
                  ema_config: Optional[Dict] = None,
-                 gen_auxiliary_loss_configs: dict = {},
-                 disc_auxiliary_loss_configs: dict = {},
-                 use_feature_match_gan: bool=False,
-                 g_disc_loss_weight: float = 1.0,
-                 d_teco_loss_weight: float = 1.0,
                  ):
         
         # super().__init__(generator=generator, discriminator=discriminator, data_preprocessor=data_preprocessor,
@@ -59,29 +53,42 @@ class TecoGAN(BaseGAN):
             self._init_ema_model(self._ema_config)
             self._with_ema_gen = True
 
-        self.use_feature_match_gan = use_feature_match_gan
-
-        if self.use_feature_match_gan:
-            self.g_disc_loss = tgl.GFM_Loss(g_disc_loss_weight=g_disc_loss_weight) 
-        else:
-            self.g_disc_loss = tgl.GDiscLoss(g_disc_loss_weight=g_disc_loss_weight) 
-
-        self.d_teco_loss = tgl.DTecoLoss(d_teco_loss_weight=d_teco_loss_weight)
-        self.gen_auxiliary_losses = [MODELS.build(loss_config)
-                                     for loss_config in gen_auxiliary_loss_configs]
+        self.gen_losses = [MODELS.build(loss_config)
+                                     for loss_config in gen_losses]
         
-        self.disc_auxiliary_losses = [MODELS.build(loss_config)
-                                     for loss_config in disc_auxiliary_loss_configs]
+        self.disc_losses = [MODELS.build(loss_config)
+                                     for loss_config in disc_losses]
+
+        # count training steps
+        self.register_buffer('step_counter', torch.zeros(1))
+
+        self.fix_iter = train_cfg.get('fix_iter', 0) if train_cfg else 0
+
+    def train_step(self, data, optim_wrapper):
+
+        # fix SPyNet and EDVR at the beginning
+        if self.step_counter < self.fix_iter:
+            if not self.is_weight_fixed:
+                self.is_weight_fixed = True
+                for k, v in self.generator.named_parameters():
+                    if 'spynet' in k or 'edvr' in k:
+                        v.requires_grad_(False)
+        elif self.step_counter == self.fix_iter:
+            # train all the parameters
+            self.generator.requires_grad_(True)
+
+        loss_dict = super().train_step(data, optim_wrapper)
+        self.step_counter += 1
+
+        return loss_dict
 
     def _get_gen_loss(self, out_dict):
         
         losses_dict = {}
-        # get basic generator's deceive loss
-        losses_dict.update({"g_disc_loss": self.g_disc_loss(out_dict)})
 
         # gen auxiliary loss
-        if self.gen_auxiliary_losses is not None and len(self.gen_auxiliary_losses) > 0:
-            for loss_module in self.gen_auxiliary_losses:
+        if self.gen_losses is not None and len(self.gen_losses) > 0:
+            for loss_module in self.gen_losses:
                 loss_ = loss_module(out_dict)
                 if loss_ is None:
                     continue
@@ -103,11 +110,9 @@ class TecoGAN(BaseGAN):
         # information.
         losses_dict = {}
 
-        losses_dict.update({"d_teco_loss": self.d_teco_loss(out_dict)})
-
         # disc auxiliary loss
-        if self.disc_auxiliary_losses is not None and len(self.disc_auxiliary_losses) > 0:
-            for loss_module in self.disc_auxiliary_losses:
+        if self.disc_losses is not None and len(self.disc_losses) > 0:
+            for loss_module in self.disc_losses:
                 loss_ = loss_module(out_dict)
                 if loss_ is None:
                     continue
@@ -122,16 +127,15 @@ class TecoGAN(BaseGAN):
 
         return loss, log_var
 
-    def compute_flow(self, spynet, imgs):
+    def compute_forward_flow(self, spynet, imgs):
 
         n, t, c, h, w = imgs.size()
         imgs_1 = imgs[:, :-1, :, :, :].reshape(-1, c, h, w)
         imgs_2 = imgs[:, 1:, :, :, :].reshape(-1, c, h, w)
 
-        backward_flows = spynet(imgs_1, imgs_2).view(n, t - 1, 2, h, w)
         forward_flows = spynet(imgs_2, imgs_1).view(n, t - 1, 2, h, w)
 
-        return forward_flows, backward_flows
+        return forward_flows
 
     def train_generator(self, inputs, data_samples, optimizer_wrapper) -> Dict[str, Tensor]:
         """Training function for discriminator. All GANs should implement this
@@ -165,8 +169,8 @@ class TecoGAN(BaseGAN):
         spynet = self.generator.spynet
 
         # obtain the high quality optical flow, 
-        hq_forward_flows, _ = self.compute_flow(spynet, batch_gt_data)
-        lq_forward_flows, _ = self.compute_flow(spynet, inputs) # This is a problem
+        hq_forward_flows = self.compute_forward_flow(spynet, batch_gt_data)
+        lq_forward_flows = self.compute_forward_flow(spynet, inputs) # This is a problem
 
         data_dict_ = dict(
             gen=self.generator,
@@ -220,9 +224,8 @@ class TecoGAN(BaseGAN):
         spynet = self.generator.spynet
 
         # obtain the high quality optical flow, 
-        hq_forward_flows, _ = self.compute_flow(spynet, batch_gt_data)
-        lq_forward_flows, _ = self.compute_flow(spynet, inputs) # This is a problem
-
+        hq_forward_flows = self.compute_forward_flow(spynet, batch_gt_data)
+        lq_forward_flows = self.compute_forward_flow(spynet, inputs) # This is a problem
 
         data_dict_ = dict(
             gen=self.generator,
