@@ -24,9 +24,10 @@ class MirrorSequence(BaseTransform):
         keys (list[str]): The frame lists to be extended.
     """
 
-    def __init__(self, keys):
+    def __init__(self, keys, is_centre_duplicate=False):
 
         self.keys = keys
+        self.is_centre_duplicate = is_centre_duplicate
 
     def transform(self, results):
         """transform function.
@@ -41,7 +42,11 @@ class MirrorSequence(BaseTransform):
 
         for key in self.keys:
             if isinstance(results[key], list):
-                results[key] = results[key] + results[key][::-1]
+                if self.is_centre_duplicate:
+                    results[key] = results[key] + results[key][::-1]
+                else: 
+                    results[key] = results[key] + results[key][-2::-1]
+
             else:
                 raise TypeError('The input must be of class list[nparray]. '
                                 f'Got {type(results[key])}.')

@@ -7,11 +7,14 @@ from mmve.registry import MODELS
 from mmve.nn.losses import perceptual_loss
 from mmve.nn.losses.pixelwise_loss import CharbonnierLoss
 
+import einops
+
 @MODELS.register_module()
-class PixelLoss(CharbonnierLoss):
+class TecoGANPixelLoss(CharbonnierLoss):
     def __init__(self,  **kwargs):
-        super().__init__(**kwargs)
         self.pixel_loss_weight = kwargs.pop("pixel_loss_weight")
+
+        super().__init__(**kwargs)
 
     def forward(self, **kwargs):
         sr, gt = kwargs['sr'], kwargs['gt']
@@ -22,41 +25,51 @@ class PixelLoss(CharbonnierLoss):
         return "pixel_loss"
 
 @MODELS.register_module()
-class PerceptualLoss(perceptual_loss.PerceptualLoss):
+class TecoGANPerceptualLoss(nn.Module):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__()
+
+        self.vgg_loss = perceptual_loss.PerceptualLoss(**kwargs).to('cuda')
 
     def forward(self, **kwargs):
         sr, gt = kwargs['sr'], kwargs['gt']
 
-        percep_loss, _ = super().forward(sr, gt)
+        sr = einops.rearrange(sr, 'b t c h w -> (b t) c h w')
+        gt = einops.rearrange(gt, 'b t c h w -> (b t) c h w')
+
+        percep_loss, _ = self.vgg_loss(sr, gt)
         return percep_loss
 
     def loss_name(self) -> str:
         return "perceptual_loss"
 
 @MODELS.register_module()
-class WarpingRegularization(nn.Module):
+class TecoGANWarpingRegularization(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
-
         self.warping_reg_weight = kwargs.pop('warping_reg_weight')
         self.warping_reg = nn.MSELoss()
+
 
     def forward(self, **kwargs):
 
         lq, lq_forward_flows = kwargs['lq'], kwargs['lq_forward_flows']
+        lq_tp1 = lq[:, 1:, ...]
+        lq_t = lq[:, :-1, ...]
 
-        lq_t = lq[:, 1:, ...]
-        lq_t1_warped = flow_warp(lq[:, :-1, ...], lq_forward_flows.permute(0, 2, 3, 1))
-        reg = self.warping_reg_weight * self.warping_reg(lq_t, lq_t1_warped)
+        lq_tp1 = einops.rearrange(lq_tp1, 'b t c h w -> (b t) c h w')
+        lq_t = einops.rearrange(lq_t, 'b t c h w -> (b t) c h w')
+        lq_forward_flows = einops.rearrange(lq_forward_flows, 'b t c h w -> (b t) c h w')
+
+        lq_tp1_warped = flow_warp(lq_t, lq_forward_flows.permute(0, 2, 3, 1))
+        reg = self.warping_reg_weight * self.warping_reg(lq_tp1, lq_tp1_warped)
         return reg
 
     def loss_name(self) -> str:
         return "warping_regularization"
 
 @MODELS.register_module()
-class PingpongRegularization(nn.Module):
+class TecoGANPingpongRegularization(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
         self.pingpong_reg_weight = kwargs.pop('pingpong_reg_weight')
@@ -73,7 +86,7 @@ class PingpongRegularization(nn.Module):
         return "pingpong_regularization"
 
 @MODELS.register_module()
-class GDiscLoss(nn.Module):
+class TecoGANGDiscLoss(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
         self.g_disc_loss_weight = kwargs.pop('g_disc_loss_weight')
@@ -81,21 +94,30 @@ class GDiscLoss(nn.Module):
 
     def forward(self, **kwargs):
 
-        sr = kwargs['sr']
+
+        sr = kwargs['sr'][:, :-1, ...]
         hq_forward_flows = kwargs['hq_forward_flows']
+
+        b = sr.size(0)
+
+        reshaped_sr = einops.rearrange(sr, 'b t c h w -> (b t) c h w')
+        reshaped_hq_forward_flows = einops.rearrange(hq_forward_flows, 'b t c h w -> (b t) c h w')
+
         discriminator = kwargs['discriminator']
 
-        sr_warped = flow_warp(sr, hq_forward_flows.permute(0, 2, 3, 1))
+        sr_warped = flow_warp(reshaped_sr, reshaped_hq_forward_flows.permute(0, 2, 3, 1))
+
+        sr_warped = einops.rearrange(sr_warped, '(b t) c h w -> b t c h w', b=b)
 
         sr_cls = discriminator(sr, sr_warped)  # Assuming a discriminator that takes two inputs
-        loss = self.g_disc_loss_weight * self.cls_loss(sr_cls, 1.0)
+        loss = self.g_disc_loss_weight * self.cls_loss(sr_cls, torch.ones_like(sr_cls))
         return loss
 
     def loss_name(self) -> str:
         return "g_disc_loss"
 
 @MODELS.register_module()
-class GFM_Loss(nn.Module):
+class TecoGANGFM_Loss(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
         self.g_disc_loss_weight = kwargs.pop('g_disc_loss_weight')
@@ -104,7 +126,16 @@ class GFM_Loss(nn.Module):
     def forward(self, **kwargs):
 
         sr, gt = kwargs['sr'], kwargs['gt']
+
+        sr = sr[:, :-1, ...]
+        gt = gt[:, :-1, ...]
+
+        reshaped_sr = einops.rearrange(sr, 'b t c h w -> (b t) c h w')
+        reshaped_gt = einops.rearrange(gt, 'b t c h w -> (b t) c h w')
+
         hq_forward_flows = kwargs['hq_forward_flows']
+
+        hq_forward_flows = einops.rearrange(hq_forward_flows, 'b t c h w -> (b t) c h w')
 
         discriminator = kwargs['discriminator']
 
@@ -121,7 +152,7 @@ class GFM_Loss(nn.Module):
 
 
 @MODELS.register_module()
-class DTecoLoss(nn.Module):
+class TecoGANDLoss(nn.Module):
     def __init__(self, **kwargs):
         super().__init__()
         self.d_teco_loss_weight = kwargs.pop('d_teco_loss_weight')
@@ -129,17 +160,32 @@ class DTecoLoss(nn.Module):
 
     def forward(self, **kwargs):
         sr, gt = kwargs['sr'], kwargs['gt']
+
+        b = sr.size(0)
+
+        sr = sr[:, :-1, ...]
+        gt = gt[:, :-1, ...]
+        
+        reshaped_sr = einops.rearrange(sr, 'b t c h w -> (b t) c h w')
+        reshaped_gt = einops.rearrange(gt, 'b t c h w -> (b t) c h w')
+
         hq_forward_flows = kwargs['hq_forward_flows']
+
+        reshaped_hq_forward_flows = einops.rearrange(hq_forward_flows, 'b t c h w -> (b t) c h w')
+
         discriminator = kwargs['discriminator']
 
-        sr_warped = flow_warp(sr, hq_forward_flows.permute(0, 2, 3, 1))
-        gt_warped = flow_warp(gt, hq_forward_flows.permute(0, 2, 3, 1))
+        sr_warped = flow_warp(reshaped_sr, reshaped_hq_forward_flows.permute(0, 2, 3, 1))
+        gt_warped = flow_warp(reshaped_gt, reshaped_hq_forward_flows.permute(0, 2, 3, 1))
+
+        sr_warped = einops.rearrange(sr_warped, '(b t) c h w -> b t c h w', b=b)
+        gt_warped = einops.rearrange(gt_warped, '(b t) c h w -> b t c h w', b=b)
 
         sr_cls = discriminator(sr, sr_warped)
         gt_cls = discriminator(gt, gt_warped)
 
-        sr_loss = self.cls_loss(sr_cls, 0.0)
-        gt_loss = self.cls_loss(gt_cls, 1.0)
+        sr_loss = self.cls_loss(sr_cls, torch.zeros_like(sr_cls))
+        gt_loss = self.cls_loss(gt_cls, torch.ones_like(gt_cls))
         loss = self.d_teco_loss_weight * (sr_loss + gt_loss)
         return loss
 

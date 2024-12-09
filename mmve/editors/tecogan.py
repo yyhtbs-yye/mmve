@@ -31,19 +31,14 @@ class TecoGAN(BaseGAN):
                  train_cfg: Optional[Dict] = None,
                  ema_config: Optional[Dict] = None,
                  ):
-        
-        # super().__init__(generator=generator, discriminator=discriminator, data_preprocessor=data_preprocessor,
-        #                  generator_steps=generator_steps, discriminator_steps=discriminator_steps,
-        #                  ema_config=ema_config,)
+                
         BaseModel.__init__(self, data_preprocessor) # BaseModel is the grandparent class
         self.generator = MODELS.build(generator)
         self.discriminator = MODELS.build(discriminator)
 
         self._gen_steps = generator_steps
         self._disc_steps = discriminator_steps
-
-        if self._with_ema_gen and not hasattr(self, '_init_ema_model'):
-            raise NotImplementedError("EMA initialization method `_init_ema_model` is not defined.")
+        self.is_weight_fixed = False
 
         if ema_config is None:
             self._ema_config = None
@@ -89,7 +84,7 @@ class TecoGAN(BaseGAN):
         # gen auxiliary loss
         if self.gen_losses is not None and len(self.gen_losses) > 0:
             for loss_module in self.gen_losses:
-                loss_ = loss_module(out_dict)
+                loss_ = loss_module(**out_dict)
                 if loss_ is None:
                     continue
 
@@ -113,7 +108,7 @@ class TecoGAN(BaseGAN):
         # disc auxiliary loss
         if self.disc_losses is not None and len(self.disc_losses) > 0:
             for loss_module in self.disc_losses:
-                loss_ = loss_module(out_dict)
+                loss_ = loss_module(**out_dict)
                 if loss_ is None:
                     continue
 

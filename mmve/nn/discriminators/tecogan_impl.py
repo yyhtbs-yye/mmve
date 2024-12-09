@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from mmengine.model import BaseModule
 from mmve.registry import MODELS
 
+import einops
+
 @MODELS.register_module()
 class DiscriminatorBlocks(nn.Module):
     def __init__(self, in_channels=64, norm_layer=nn.BatchNorm2d):
@@ -47,21 +49,21 @@ class DiscriminatorBlocks(nn.Module):
         if get_features:
             return feature_list
         else:
-            return self.fc(self.global_pool(self.block5(h4)))
+            return self.fc(self.global_pool(self.block5(h4)).flatten(1))
 
 @MODELS.register_module()
 class SpatioTemporalDiscriminator(BaseModule):
 
-    def __init__(self, in_channels=64):
+    def __init__(self, in_channels=3, mid_channels=32): # 3: means RGB
         super(SpatioTemporalDiscriminator, self).__init__()
 
         # input conv.
         self.preproc = nn.Sequential(
-            nn.Conv2d(in_channels * 2, in_channels, 3, 1, 1, bias=True),
+            nn.Conv2d(in_channels * 2 * 3, mid_channels, 3, 1, 1, bias=True), # * 2 * 3 means 2=(x, and warped), and 3=(pre, now, nxt)
             nn.LeakyReLU(0.2, inplace=True))
 
         # discriminator block
-        self.main = DiscriminatorBlocks(in_channels=in_channels)  # downsample 16x
+        self.main = DiscriminatorBlocks(in_channels=mid_channels)  # downsample 16x
 
 
     def forward(self, x, x_warped, get_features=False):
@@ -73,6 +75,9 @@ class SpatioTemporalDiscriminator(BaseModule):
         x = torch.cat([x[:, i:i + 3] for i in range(x.shape[1] - 2)], dim=0)
         x_warped = torch.cat([x_warped[:, i:i + 3] for i in range(x_warped.shape[1] - 2)], dim=0)
 
+
+        x = einops.rearrange(x, 'b q c h w -> b (q c) h w')
+        x_warped = einops.rearrange(x_warped, 'b q c h w -> b (q c) h w')
         # NOW: after sliding window
         # x.shape = [n*(t-1), 3*c, h, w]
         # x_warped.shape = [n*(t-1), 3*c, h, w]
