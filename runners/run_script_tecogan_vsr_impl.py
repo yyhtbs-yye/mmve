@@ -16,7 +16,7 @@ from mmengine.config import Config
 
 cfg = Config.fromfile(cfg_path)
 
-cfg.train_cfg['val_interval'] = 10000
+cfg.train_cfg['val_interval'] = 100
 
 cfg.model['generator'].update(**model_configs)
 # Below will not work, as they are not modified in settings but as global variables. 
